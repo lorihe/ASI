@@ -14,6 +14,11 @@ def load_jsonl_file(file_path):
         data = [line for line in file if line['timestamp'] is not None]
     return data
 
+def load_jsonl_file_frame(file_path, frame):
+    with jsonlines.open(file_path, 'r') as file:
+        data = [line for line in file if line['frame'] == frame]
+    return data
+
 def explode_data(row):
     players = pd.DataFrame(row['player_data'])
     players['object'] = 'player'
@@ -109,4 +114,17 @@ def find_ball(match_id, frame):
         data = [line for line in file if line['frame'] == frame][0]
         ball_data = data['ball_data']
     return ball_data['x'], ball_data['y']
-        
+
+def find_pitch_size(match_id):
+    match_path = f'data/FA/match/{match_id}.json'
+    match_data = load_json_file(match_path)
+    return match_data['pitch_length'], match_data['pitch_width']
+
+def find_name(match_id, player_id):
+    match_path = f'data/FA/match/{match_id}.json'
+    match_data = load_json_file(match_path)
+    player = [p for p in match_data['players'] if p['id'] == player_id][0]
+    return player['first_name'] + ' ' + player['last_name']
+
+
+    
