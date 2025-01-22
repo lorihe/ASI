@@ -93,7 +93,7 @@ def calculate_area(points):
     area = abs(area) / 2.0
     return area
 
-def get_areas(points, target_point):
+def get_areas(points, target_point, factor_x):
     """
     Calculates the areas of the sub polygons formed by dividing a polygon with a vertical line through a given point.
 
@@ -107,18 +107,17 @@ def get_areas(points, target_point):
            vertices of the left polygon, and vertices of the right polygon.
     """
     intersections =  get_intersections(points, target_point[0])
-    
-    points_right = np.array([p for p in points if p[0] > target_point[0]])
-    points_right = np.vstack([points_right, intersections])
-    points_right = order_polygon_points(points_right)
-    area_right = calculate_area(points_right)
-    
-    points_left = np.array([p for p in points if p[0] < target_point[0]])
-    points_left = np.vstack([points_left, intersections])
-    points_left = order_polygon_points(points_left)
-    area_left = calculate_area(points_left)    
-    
-    return area_left, area_right, points_left, points_right
+    points_forward = np.array([p for p in points if p[0] > target_point[0]]) if factor_x == 1 else np.array([p for p in points if p[0] < target_point[0]])
+    points_forward = np.vstack([points_forward, intersections])
+    points_forward = order_polygon_points(points_forward)
+    area_forward = calculate_area(points_forward)
+
+    points_backward = np.array([p for p in points if p[0] < target_point[0]]) if factor_x == 1 else np.array([p for p in points if p[0] > target_point[0]])
+    points_backward = np.vstack([points_backward, intersections])
+    points_backward = order_polygon_points(points_backward)
+    area_backward = calculate_area(points_backward)
+
+    return area_forward, area_backward, points_forward, points_backward
 
 def get_intersections(points, x_value):
     """
@@ -162,7 +161,7 @@ def plot_polygon(vertices, color='grey', alpha = 0.5):
                           mode='none', showlegend=False)
 
 def plot_vor(points_nbs, hull_points, recipient_xy, boundary_points, vertices, 
-             vertices_left, vertices_right):
+             vertices_backward, vertices_forward):
 
     fig = go.Figure()
 
@@ -179,21 +178,18 @@ def plot_vor(points_nbs, hull_points, recipient_xy, boundary_points, vertices,
     defense_nbs_xy = np.array([p for i, p in enumerate(points_nbs) if 
                                not np.any((p == np.vstack([boundary_points, recipient_xy])).all(axis=1))])
 
-
     # Plot vertices
     # fig.add_trace(go.Scatter(x=vertices[:, 0], y=vertices[:, 1], mode='markers',
     #                          marker=dict(color='black', size=5), name='Vertices', showlegend=False))
 
     # Plot Convex Hull, if possible
-    if len(np.unique(hull_points, axis=0)) >= 3:
-        hull = ConvexHull(hull_points)
-        for simplex in hull.simplices:
-            fig.add_trace(go.Scatter(x=hull_points[simplex, 0], y=hull_points[simplex, 1], 
-                                     mode='lines', line=dict(color='grey', dash='dot', width=0.5), name='Convex Hull', showlegend=False))
+    # if len(np.unique(hull_points, axis=0)) >= 3:
+    #     hull = ConvexHull(hull_points)
+    #     for simplex in hull.simplices:
+    #         fig.add_trace(go.Scatter(x=hull_points[simplex, 0], y=hull_points[simplex, 1], 
+    #                                  mode='lines', line=dict(color='grey', dash='dot', width=0.5), name='Convex Hull', showlegend=False))
 
     # Plot polygons for divided Voronoi cell
-    vertices_forward = vertices_right if recipient_xy[0] > 0 else vertices_left
-    vertices_backward = vertices_left if recipient_xy[0] > 0 else vertices_right
     fig.add_trace(plot_polygon(vertices_forward, alpha=0.5))
     fig.add_trace(plot_polygon(vertices_backward, alpha=0.2))
 
@@ -203,19 +199,19 @@ def plot_vor(points_nbs, hull_points, recipient_xy, boundary_points, vertices,
     fig.add_trace(go.Scatter(x=[recipient_xy[0]], y=[recipient_xy[1]], mode='markers',
                              marker=dict(color='sienna', size=10), name='Recipient'))
     
-    points_plot = np.vstack([vertices, defense_nbs_xy])   
+    points_plot = np.vstack([defense_nbs_xy, vertices])   
     max_y = np.max(points_plot[:, 1])
     min_y = np.min(points_plot[:, 1])
     max_x = np.max(points_plot[:, 0])
     min_x = np.min(points_plot[:, 0])
-    ylim_top = max_y + 2 if max_y < 40 else 40
-    ylim_bot = min_y - 2 if min_y > -40 else -40
+    ylim_top = max_y + 2 
+    ylim_bot = min_y - 2
 
     # Set layout
     fig.update_layout(plot_bgcolor='white', xaxis=dict(range=[min_x-1, max_x+2], showticklabels = False),
                       yaxis=dict(range=[ylim_bot-1, ylim_top-1], showticklabels = False),
                       showlegend=True, legend=dict(x=0.9, y=1, font = dict(size=13)),
-                      dragmode=False, width=500, height=400,
+                      dragmode=False, width=400, height=300,
                       margin=dict(t=4, b=0, r=2))
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(showgrid=False, scaleanchor="x", scaleratio=1)    
