@@ -108,12 +108,22 @@ def get_receive_frame(tracking_path, team, home_start, pitch_length, start_frame
 
     return match['period'], match['frame'], player_x, player_y, target_area
 
-def find_ball(match_id, frame):
-    tracking_path = f'data/FA/tracking/{match_id}.jsonl'
-    with jsonlines.open(tracking_path, 'r') as file:
-        data = [line for line in file if line['frame'] == frame][0]
-        ball_data = data['ball_data']
+def find_ball(tracking_data, frame):
+    data = [line for line in tracking_data if line['frame'] == frame][0]
+    ball_data = data['ball_data']
     return ball_data['x'], ball_data['y']
+
+def find_player(tracking_data, frame, player_id):
+    data = [line for line in tracking_data if line['frame'] == frame][0]
+    player_data = data['player_data']
+    if len(player_data) > 0:
+        player_xy = [p for p in player_data if p['player_id'] == player_id]
+        if len(player_xy) > 0:
+            return player_xy[0]['x'], player_xy[0]['y']
+        else:
+            return None, None
+    else:
+        return None, None
 
 def find_pitch_size(match_id):
     match_path = f'data/FA/match/{match_id}.json'
