@@ -136,5 +136,9 @@ def find_name(match_id, player_id):
     player = [p for p in match_data['players'] if p['id'] == player_id][0]
     return player['first_name'] + ' ' + player['last_name']
 
-
+def find_nearest_row(df, target_x, target_y):
+    distances = np.sqrt((df['x'] - target_x) ** 2 + (df['y'] - target_y) ** 2)
+    nearest_idx = distances.idxmin()
+    min_distance = distances[nearest_idx]
+    return df.loc[nearest_idx], min_distance
     

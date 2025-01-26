@@ -93,7 +93,7 @@ def calculate_area(points):
     area = abs(area) / 2.0
     return area
 
-def get_areas(points, target_point, factor_x):
+def get_areas(vertices, target_point, factor_x, pitch_length):
     """
     Calculates the areas of the sub polygons formed by dividing a polygon with a vertical line through a given point.
 
@@ -106,19 +106,107 @@ def get_areas(points, target_point, factor_x):
     tuple: A tuple containing the area of the left polygon, the area of the right polygon, 
            vertices of the left polygon, and vertices of the right polygon.
     """
-    intersections =  get_intersections(points, target_point[0])
-    points_forward = np.array([p for p in points if p[0] > target_point[0]]) if factor_x == 1 else np.array([p for p in points if p[0] < target_point[0]])
-    points_forward = np.vstack([points_forward, intersections])
-    points_forward = order_polygon_points(points_forward)
-    area_forward = calculate_area(points_forward)
+    intersections, vertices_inside, vertices_outside = get_intersections_and_divide(vertices, target_point, pitch_length)
 
-    points_backward = np.array([p for p in points if p[0] < target_point[0]]) if factor_x == 1 else np.array([p for p in points if p[0] > target_point[0]])
-    points_backward = np.vstack([points_backward, intersections])
-    points_backward = order_polygon_points(points_backward)
-    area_backward = calculate_area(points_backward)
+    vertices_inside = np.vstack([vertices_inside, intersections])
+    vertices_inside = order_polygon_points(vertices_inside)
+    area_inside = calculate_area(vertices_inside)
 
-    return area_forward, area_backward, points_forward, points_backward
+    vertices_outside = np.vstack([vertices_outside, intersections])
+    vertices_outside = order_polygon_points(vertices_outside)
+    area_outside = calculate_area(vertices_outside)
 
+    return area_inside, area_outside, vertices_inside, vertices_outside
+    
+def get_intersections_and_divide(points, target_point, pitch_length):
+    """
+    Find the intersection points of a polygon with a line perpendicular to the line between (x0, y0) and (xg, yg),
+    and divide the points into groups closer to (xg, yg) or (x0, y0).
+
+    Args:
+    points (np.ndarray): An ORDERED numpy array of points [[x1, y1], [x2, y2], ...]
+                         representing the polygon's vertices.
+    target_point (tuple): Coordinates (x0, y0) of the point defining the target.
+    pitch_length (float): Length of the pitch to determine (xg, yg).
+
+    Returns:
+    tuple:
+        - numpy.ndarray: The intersection points with the perpendicular line.
+        - numpy.ndarray: Points closer to (xg, yg).
+        - numpy.ndarray: Points closer to (x0, y0).
+    """
+    x0, y0 = target_point
+    factor_x = 1 if x0 > 0 else -1
+    xg, yg = pitch_length / 2 * factor_x, 0
+    intersections = []
+
+    # Slope of the line between (x0, y0) and (xg, yg)
+    slope = (yg - y0) / (xg - x0)
+    perp_slope = -1 / slope
+
+    def perpendicular_line(x):
+        return perp_slope * (x - x0) + y0
+
+    # Find intersections with the polygon edges
+    for i in range(len(points)):
+        start, end = points[i], points[(i + 1) % len(points)]
+
+        # Edge: y = edge_slope * (x - x_start) + y_start
+        if end[0] == start[0]:  # Vertical edge
+            x_intersect = start[0]
+            y_intersect = perpendicular_line(x_intersect)
+        else:
+            edge_slope = (end[1] - start[1]) / (end[0] - start[0])
+            if perp_slope == edge_slope:  # Parallel lines
+                continue
+            # Solve for intersection
+            x_intersect = (
+                (perp_slope * x0 - edge_slope * start[0] + start[1] - y0)
+                / (perp_slope - edge_slope)
+            )
+            y_intersect = edge_slope * (x_intersect - start[0]) + start[1]
+
+        # Check if the intersection lies on the polygon edge
+        if (
+            min(start[0], end[0]) <= x_intersect <= max(start[0], end[0])
+            and min(start[1], end[1]) <= y_intersect <= max(start[1], end[1])
+        ):
+            intersections.append([x_intersect, y_intersect])
+
+    # Ensure there are exactly two intersections
+    if len(intersections) != 2:
+        raise Exception("Number of intersections not equal to two")
+
+    intersections = np.array(intersections)
+
+    # Divide points into closer and further groups
+    closer_points = []
+    further_points = []
+
+    # Calculate the dividing line function
+    for point in points:
+        x, y = point
+        # Plug point into the line 
+        dx = xg - x0
+        dy = yg - y0
+        t = ((x - x0) * dx + (y - y0) * dy) / (dx**2 + dy**2)
+    
+        # Compute the projected point
+        x_proj = x0 + t * dx
+        y_proj = y0 + t * dy
+
+        # Distance from the projection point to (xg, yg) and to (x0, y0)
+        proj_to_goal = np.sqrt((x_proj - xg) ** 2 + (y_proj - yg) ** 2)
+        ball_to_goal = np.sqrt((x0 - xg) ** 2 + (y0 - yg) ** 2)
+
+        # Classify the point
+        if proj_to_goal < ball_to_goal:
+            closer_points.append(point)
+        else:
+            further_points.append(point)
+
+    return intersections, np.array(closer_points), np.array(further_points)
+    
 def get_intersections(points, x_value):
     """
     Find the intersection points of a polygon with a vertical line x = x_value.
@@ -160,11 +248,10 @@ def plot_polygon(vertices, color='grey', alpha = 0.5):
         return go.Scatter(x=x, y=y, fill='toself', fillcolor=color, opacity=alpha, 
                           mode='none', showlegend=False)
 
-def plot_vor(points_nbs, hull_points, recipient_xy, boundary_points, vertices, 
-             vertices_backward, vertices_forward):
+def plot_vor(points_nbs, ball_xy, boundary_points, vertices, 
+             area_inside, area_outside):
 
     fig = go.Figure()
-
     vor = Voronoi(points_nbs)
 
     # Plot Voronoi edges
@@ -176,28 +263,17 @@ def plot_vor(points_nbs, hull_points, recipient_xy, boundary_points, vertices,
 
     # Separate defender points from carrier and boundary points
     defense_nbs_xy = np.array([p for i, p in enumerate(points_nbs) if 
-                               not np.any((p == np.vstack([boundary_points, recipient_xy])).all(axis=1))])
-
-    # Plot vertices
-    # fig.add_trace(go.Scatter(x=vertices[:, 0], y=vertices[:, 1], mode='markers',
-    #                          marker=dict(color='black', size=5), name='Vertices', showlegend=False))
-
-    # Plot Convex Hull, if possible
-    # if len(np.unique(hull_points, axis=0)) >= 3:
-    #     hull = ConvexHull(hull_points)
-    #     for simplex in hull.simplices:
-    #         fig.add_trace(go.Scatter(x=hull_points[simplex, 0], y=hull_points[simplex, 1], 
-    #                                  mode='lines', line=dict(color='grey', dash='dot', width=0.5), name='Convex Hull', showlegend=False))
+                               not np.any((p == np.vstack([boundary_points, ball_xy])).all(axis=1))])
 
     # Plot polygons for divided Voronoi cell
-    fig.add_trace(plot_polygon(vertices_forward, alpha=0.5))
-    fig.add_trace(plot_polygon(vertices_backward, alpha=0.2))
+    fig.add_trace(plot_polygon(area_inside, alpha=0.5))
+    fig.add_trace(plot_polygon(area_outside, alpha=0.2))
 
     # Add scatter plots for different points
     fig.add_trace(go.Scatter(x=defense_nbs_xy[:, 0], y=defense_nbs_xy[:, 1], mode='markers',
                              marker=dict(color='darkblue', size=10), name='Defenders'))
-    fig.add_trace(go.Scatter(x=[recipient_xy[0]], y=[recipient_xy[1]], mode='markers',
-                             marker=dict(color='sienna', size=10), name='Recipient'))
+    fig.add_trace(go.Scatter(x=[ball_xy[0]], y=[ball_xy[1]], mode='markers',
+                             marker=dict(color='sienna', size=10), name='Ball'))
     
     points_plot = np.vstack([defense_nbs_xy, vertices])   
     max_y = np.max(points_plot[:, 1])
