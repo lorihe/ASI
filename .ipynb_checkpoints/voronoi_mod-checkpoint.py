@@ -152,7 +152,7 @@ def get_intersections_and_divide(points, target_point, pitch_length):
         start, end = points[i], points[(i + 1) % len(points)]
 
         # Edge: y = edge_slope * (x - x_start) + y_start
-        if end[0] == start[0]:  # Vertical edge
+        if round(end[0], 3) == round(start[0], 3):  # Vertical edge
             x_intersect = start[0]
             y_intersect = perpendicular_line(x_intersect)
         else:
@@ -252,15 +252,21 @@ def plot_vor(points_nbs, ball_xy, boundary_points, vertices,
              area_inside, area_outside):
 
     fig = go.Figure()
-    vor = Voronoi(points_nbs)
+    vor = Voronoi(np.vstack([points_nbs, boundary_points]))
 
     # Plot Voronoi edges
     for simplex in vor.ridge_vertices:
         simplex = np.asarray(simplex)
-        if np.all(simplex >= 0):
-            fig.add_trace(go.Scatter(x=vor.vertices[simplex, 0], y=vor.vertices[simplex, 1],
-                                     mode='lines', line_color='grey', line_width=0.5, showlegend=False))
-
+        if np.all(simplex >= 0):  # Finite edges
+            fig.add_trace(go.Scatter(
+                x=vor.vertices[simplex, 0], 
+                y=vor.vertices[simplex, 1],
+                mode='lines',
+                line_color='grey',
+                line_width=0.5,
+                showlegend=False
+            ))
+    
     # Separate defender points from carrier and boundary points
     defense_nbs_xy = np.array([p for i, p in enumerate(points_nbs) if 
                                not np.any((p == np.vstack([boundary_points, ball_xy])).all(axis=1))])
@@ -273,7 +279,7 @@ def plot_vor(points_nbs, ball_xy, boundary_points, vertices,
     fig.add_trace(go.Scatter(x=defense_nbs_xy[:, 0], y=defense_nbs_xy[:, 1], mode='markers',
                              marker=dict(color='darkblue', size=10), name='Defenders'))
     fig.add_trace(go.Scatter(x=[ball_xy[0]], y=[ball_xy[1]], mode='markers',
-                             marker=dict(color='sienna', size=10), name='Ball'))
+                             marker=dict(color='black', size=10, symbol='circle-open'), name='Ball'))
     
     points_plot = np.vstack([defense_nbs_xy, vertices])   
     max_y = np.max(points_plot[:, 1])
@@ -286,8 +292,8 @@ def plot_vor(points_nbs, ball_xy, boundary_points, vertices,
     # Set layout
     fig.update_layout(plot_bgcolor='white', xaxis=dict(range=[min_x-1, max_x+2], showticklabels = False),
                       yaxis=dict(range=[ylim_bot-1, ylim_top-1], showticklabels = False),
-                      showlegend=True, legend=dict(x=0.9, y=1, font = dict(size=13)),
-                      dragmode=False, width=400, height=300,
+                      showlegend=True, legend=dict(x=1, y=1, font = dict(size=13)),
+                      dragmode=False, width=500, height=300,
                       margin=dict(t=4, b=0, r=2))
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(showgrid=False, scaleanchor="x", scaleratio=1)    
